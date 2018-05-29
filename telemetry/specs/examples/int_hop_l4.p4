@@ -510,136 +510,77 @@ control EgressDeparserImpl(packet_out packet,
     }
 }
 
+/* This information isn't provided by PSA currently */
+#define Q_ID        0xFF
+#define Q_OCCUPANCY 0xFFFFFF
+#define PORT_UTIL   13
+
 control Int_metadata_insert(inout headers hdr,
         in int_metadata_t int_metadata,
         in bridged_ingress_input_metadata_t bridged_istd,
         in psa_egress_input_metadata_t istd)
 {
-    /* this reference implementation covers only INT instructions 0-3 */
-    action int_set_header_0() {
-        hdr.int_switch_id.setValid();
-        hdr.int_switch_id.switch_id = int_metadata.switch_id;
-    }
-    action int_set_header_1() {
-        hdr.int_level1_port_ids.setValid();
-        hdr.int_level1_port_ids.ingress_port_id =
-            (bit<16>) bridged_istd.ingress_port;
-        hdr.int_level1_port_ids.egress_port_id =
-            (bit<16>) istd.egress_port;
-    }
-    action int_set_header_2() {
-        hdr.int_hop_latency.setValid();
-        hdr.int_hop_latency.hop_latency =
-            (bit<32>) (istd.egress_timestamp - bridged_istd.ingress_timestamp);
-    }
-    action int_set_header_3() {
-        hdr.int_q_occupancy.setValid();
-        // PSA doesn't support queueing metadata yet
-        hdr.int_q_occupancy.q_id = 0xFF;
-        hdr.int_q_occupancy.q_occupancy = 0xFFFFFF;
-    }
-
-    /* action functions for bits 0-3 combinations, 0 is msb, 3 is lsb */
-    /* Each bit set indicates that corresponding INT header should be added */
-    action int_set_header_0003_i0() {
-    }
-    action int_set_header_0003_i1() {
-        int_set_header_3();
-    }
-    action int_set_header_0003_i2() {
-        int_set_header_2();
-    }
-    action int_set_header_0003_i3() {
-        int_set_header_3();
-        int_set_header_2();
-    }
-    action int_set_header_0003_i4() {
-        int_set_header_1();
-    }
-    action int_set_header_0003_i5() {
-        int_set_header_3();
-        int_set_header_1();
-    }
-    action int_set_header_0003_i6() {
-        int_set_header_2();
-        int_set_header_1();
-    }
-    action int_set_header_0003_i7() {
-        int_set_header_3();
-        int_set_header_2();
-        int_set_header_1();
-    }
-    action int_set_header_0003_i8() {
-        int_set_header_0();
-    }
-    action int_set_header_0003_i9() {
-        int_set_header_3();
-        int_set_header_0();
-    }
-    action int_set_header_0003_i10() {
-        int_set_header_2();
-        int_set_header_0();
-    }
-    action int_set_header_0003_i11() {
-        int_set_header_3();
-        int_set_header_2();
-        int_set_header_0();
-    }
-    action int_set_header_0003_i12() {
-        int_set_header_1();
-        int_set_header_0();
-    }
-    action int_set_header_0003_i13() {
-        int_set_header_3();
-        int_set_header_1();
-        int_set_header_0();
-    }
-    action int_set_header_0003_i14() {
-        int_set_header_2();
-        int_set_header_1();
-        int_set_header_0();
-    }
-    action int_set_header_0003_i15() {
-        int_set_header_3();
-        int_set_header_2();
-        int_set_header_1();
-        int_set_header_0();
-    }
-
-    /* Table to process instruction bits 0-3 */
-    table int_inst_0003 {
-        key = {
-            hdr.int_header.instruction_mask_0003 : exact;
-        }
-        actions = {
-            int_set_header_0003_i0;
-            int_set_header_0003_i1;
-            int_set_header_0003_i2;
-            int_set_header_0003_i3;
-            int_set_header_0003_i4;
-            int_set_header_0003_i5;
-            int_set_header_0003_i6;
-            int_set_header_0003_i7;
-            int_set_header_0003_i8;
-            int_set_header_0003_i9;
-            int_set_header_0003_i10;
-            int_set_header_0003_i11;
-            int_set_header_0003_i12;
-            int_set_header_0003_i13;
-            int_set_header_0003_i14;
-            int_set_header_0003_i15;
-        }
-        default_action = int_set_header_0003_i0();
-        size = 16;
-    }
-
-    /* Similar tables can be defined for instruction bits 4-7 and bits 8-11 */
-    /* e.g., int_inst_0407, int_inst_0811 */
-
     apply{
-        int_inst_0003.apply();
-        // int_inst_0407.apply();
-        // int_inst_0811.apply();
+        // Bit 0: switch ID
+        if (0 != hdr.intl4.instruction_mask_0003 & (1 << 0)) {
+            hdr.int_switch_id.setValid();
+            hdr.int_switch_id.switch_id = int_metadata.switch_id;
+        }
+        
+        // Bit 1: Level 1 Ingress Port ID + Egress Port ID (2 bytes each)
+        if (0 != hdr.intl4.instruction_mask_0003 & (1 << 1)) {
+            hdr.int_level1_port_ids.setValid();
+            hdr.int_level1_port_ids.ingress_port_id =
+                (bit<16>) bridged_istd.ingress_port;
+            hdr.int_level1_port_ids.egress_port_id =
+                (bit<16>) istd.egress_port;
+        }
+        
+        // Bit 2: Hop latency
+        if (0 != hdr.intl4.instruction_mask_0003 & (1 << 2)) {
+            hdr.int_hop_latency.setValid();
+            hdr.int_hop_latency.hop_latency =
+                (bit<32>) (istd.egress_timestamp - istd.ingress_timestamp);
+        }
+        
+        // Bit 3: Queue ID
+        if (0 != hdr.intl4.instruction_mask_0003 & (1 << 3)) {
+            hdr.int_q_occupancy.setValid();
+            hdr.int_q_occupancy.q_id = Q_ID;
+            hdr.int_q_occupancy.q_occupancy = Q_OCCUPANCY;
+        }
+        
+        // Bit 4: Ingress timestamp
+        if (0 != hdr.intl4.instruction_mask_0407 & (1 << 0)) {
+            hdr.int_ingress_tstamp.setValid();
+            hdr.int_ingress_tstamp.ingress_tstamp =
+                (bit<32>) bridged_istd.ingress_timestamp;
+        }
+        
+        // Bit 5: Egress timestamp
+        if (0 != hdr.intl4.instruction_mask_0407 & (1 << 1)) {
+            hdr.int_egress_tstamp.setValid();
+            hdr.int_egress_tstamp.egress_tstamp =
+                (bit<32>) istd.egress_timestamp;
+        }
+        
+        // Bit 6: Level 2 Ingress Port ID + Egress Port ID (4 bytes each)
+        if (0 != hdr.intl4.instruction_mask_0407 & (1 << 2)) {
+            hdr.int_level2_port_ids.setValid();
+            hdr.int_level2_port_ids.ingress_port_id = /* FINISH */;
+            hdr.int_level2_port_ids.egress_port_id = /* FINISH */;
+        }
+        
+        // Bit 7: Egress port Tx utilization
+        if (0 != hdr.intl4.instruction_mask_0407 & (1 << 3)) {
+            hdr.int_egress_port_tx_util.setValid();
+            hdr.int_egress_port_tx_util.egress_port_tx_util = PORT_UTIL;
+        }
+        
+        // ...reserved...
+        
+        // Bit 15: Checksum complement
+        // FINISH
     }
 }
 
